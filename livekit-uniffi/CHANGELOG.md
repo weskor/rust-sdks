@@ -1,3 +1,9 @@
+## 0.1.9 (2026-08-20)
+
+### Fixes
+
+- Expose `RemoteDataTrack.set_pipeline_options` and `RemoteDataTrackPipelineOptions` (`max_partial_frames`) over UniFFI, matching the JS and Rust SDKs
+
 ## 0.1.8 (2026-08-03)
 
 ### Fixes
