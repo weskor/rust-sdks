@@ -181,4 +181,4 @@ jobs:
         shell: bash
         run: |
           cargo test --verbose --target ${{ matrix.target }} -p livekit-net --features native-tokio
-          cargo test --verbose --target ${{ matrix.target }} -p livekit-api --features signal-client-tokio
+          cargo test --verbose --target ${{ matrix.target }} -p livekit-signaling --features native-tokio
