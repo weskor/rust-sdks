@@ -3939,6 +3939,7 @@ dependencies = [
  "livekit-common",
  "livekit-net",
  "livekit-protocol",
+ "livekit-region",
  "livekit-runtime",
  "livekit-token",
  "log",
@@ -4066,6 +4067,13 @@ dependencies = [
  "pbjson",
  "pbjson-types",
  "prost 0.12.6",
+ "serde",
+]
+
+[[package]]
+name = "livekit-region"
+version = "0.1.0"
+dependencies = [
  "serde",
 ]
 
