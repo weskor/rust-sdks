@@ -44,6 +44,7 @@ pub mod ffi {
 
         fn add_sink(self: &AudioTrack, sink: &SharedPtr<NativeAudioSink>);
         fn remove_sink(self: &AudioTrack, sink: &SharedPtr<NativeAudioSink>);
+        fn set_receive_gain(self: &AudioTrack, gain: f64) -> bool;
         fn new_native_audio_sink(
             observer: Box<AudioSinkWrapper>,
             sample_rate: i32,

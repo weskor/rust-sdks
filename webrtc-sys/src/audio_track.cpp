@@ -79,6 +79,25 @@ void AudioTrack::remove_sink(
   sinks_.erase(std::remove(sinks_.begin(), sinks_.end(), sink), sinks_.end());
 }
 
+bool AudioTrack::set_receive_gain(double gain) const {
+  if (!(gain >= 0.0 && gain <= 10.0)) {
+    return false;
+  }
+
+  auto set_volume = [this, gain] {
+    auto* source = track()->GetSource();
+    if (source == nullptr) {
+      return false;
+    }
+    source->SetVolume(gain);
+    return true;
+  };
+  auto* signaling_thread = rtc_runtime_->signaling_thread();
+  return signaling_thread->IsCurrent()
+             ? set_volume()
+             : signaling_thread->BlockingCall(set_volume);
+}
+
 NativeAudioSink::NativeAudioSink(rust::Box<AudioSinkWrapper> observer,
                                  int sample_rate,
                                  int num_channels)
