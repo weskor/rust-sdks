@@ -16,7 +16,14 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use crate::data_channel::DataChannelState;
+use crate::{data_channel::DataChannelState, RtcError, RtcErrorType};
+
+pub(crate) fn deserialize_rtc_stats(stats: &str) -> Result<Vec<RtcStats>, RtcError> {
+    serde_json::from_str(stats).map_err(|error| RtcError {
+        error_type: RtcErrorType::Internal,
+        message: format!("failed to parse WebRTC stats report: {error}"),
+    })
+}
 
 /// Values from https://www.w3.org/TR/webrtc-stats/ (NOTE: Some of the structs are not in the SPEC
 /// but inside libwebrtc)
@@ -44,6 +51,20 @@ pub enum RtcStats {
     Certificate(CertificateStats),
     Stream(StreamStats),
     Track, // Deprecated
+}
+
+#[cfg(test)]
+mod deserialization_tests {
+    use super::*;
+
+    #[test]
+    fn malformed_stats_report_returns_an_error() {
+        let error = deserialize_rtc_stats("not-json")
+            .expect_err("malformed stats must not cross the native callback as a panic");
+
+        assert_eq!(error.error_type, RtcErrorType::Internal);
+        assert!(error.message.starts_with("failed to parse WebRTC stats report:"));
+    }
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Deserialize)]
