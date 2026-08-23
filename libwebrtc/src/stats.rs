@@ -19,10 +19,16 @@ use serde::Deserialize;
 use crate::{data_channel::DataChannelState, RtcError, RtcErrorType};
 
 pub(crate) fn deserialize_rtc_stats(stats: &str) -> Result<Vec<RtcStats>, RtcError> {
-    serde_json::from_str(stats).map_err(|error| RtcError {
-        error_type: RtcErrorType::Internal,
-        message: format!("failed to parse WebRTC stats report: {error}"),
-    })
+    let reports =
+        serde_json::from_str::<Vec<serde_json::Value>>(stats).map_err(|error| RtcError {
+            error_type: RtcErrorType::Internal,
+            message: format!("failed to parse WebRTC stats report: {error}"),
+        })?;
+
+    // libwebrtc can add new report variants before this crate's typed schema catches up.
+    // Stats are diagnostic data, so retain the reports we understand instead of failing the
+    // entire native callback because one optional report is newer than the Rust bindings.
+    Ok(reports.into_iter().filter_map(|report| serde_json::from_value(report).ok()).collect())
 }
 
 /// Values from https://www.w3.org/TR/webrtc-stats/ (NOTE: Some of the structs are not in the SPEC
@@ -64,6 +70,20 @@ mod deserialization_tests {
 
         assert_eq!(error.error_type, RtcErrorType::Internal);
         assert!(error.message.starts_with("failed to parse WebRTC stats report:"));
+    }
+
+    #[test]
+    fn unknown_stats_entries_do_not_discard_known_entries() {
+        let stats = deserialize_rtc_stats(
+            r#"[
+                {"type":"peer-connection","id":"pc","timestamp":1},
+                {"type":"future-report","id":"newer-libwebrtc-report","timestamp":2}
+            ]"#,
+        )
+        .expect("a valid stats array must deserialize");
+
+        assert_eq!(stats.len(), 1);
+        assert!(matches!(stats[0], RtcStats::PeerConnection(_)));
     }
 }
 
