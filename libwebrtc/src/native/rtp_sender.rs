@@ -49,9 +49,7 @@ impl RtpSender {
                 return;
             }
 
-            // Unwrap because it should not happens
-            let vec = serde_json::from_str(&stats).unwrap();
-            let _ = tx.send(Ok(vec));
+            let _ = tx.send(crate::stats::deserialize_rtc_stats(&stats));
         });
 
         rx.await.map_err(|_| RtcError {
