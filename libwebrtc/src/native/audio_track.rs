@@ -30,4 +30,8 @@ impl RtcAudioTrack {
     pub fn sys_handle(&self) -> SharedPtr<sys_at::ffi::MediaStreamTrack> {
         audio_to_media(self.sys_handle.clone())
     }
+
+    pub fn set_receive_gain(&self, gain: f64) -> bool {
+        self.sys_handle.set_receive_gain(gain)
+    }
 }

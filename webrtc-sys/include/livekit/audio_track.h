@@ -56,6 +56,7 @@ class AudioTrack : public MediaStreamTrack {
 
   void add_sink(const std::shared_ptr<NativeAudioSink>& sink) const;
   void remove_sink(const std::shared_ptr<NativeAudioSink>& sink) const;
+  bool set_receive_gain(double gain) const;
 
  private:
   webrtc::AudioTrackInterface* track() const {
