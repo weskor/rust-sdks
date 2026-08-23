@@ -26,6 +26,11 @@ pub struct RtcAudioTrack {
 
 impl RtcAudioTrack {
     media_stream_track!();
+
+    /// Sets local playback gain for this WebRTC receive track.
+    pub fn set_receive_gain(&self, gain: f64) -> bool {
+        self.handle.set_receive_gain(gain)
+    }
 }
 
 impl Debug for RtcAudioTrack {
