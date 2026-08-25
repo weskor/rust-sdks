@@ -19,16 +19,93 @@ use serde::Deserialize;
 use crate::{data_channel::DataChannelState, RtcError, RtcErrorType};
 
 pub(crate) fn deserialize_rtc_stats(stats: &str) -> Result<Vec<RtcStats>, RtcError> {
-    let reports =
-        serde_json::from_str::<Vec<serde_json::Value>>(stats).map_err(|error| RtcError {
-            error_type: RtcErrorType::Internal,
-            message: format!("failed to parse WebRTC stats report: {error}"),
-        })?;
-
     // libwebrtc can add new report variants before this crate's typed schema catches up.
-    // Stats are diagnostic data, so retain the reports we understand instead of failing the
-    // entire native callback because one optional report is newer than the Rust bindings.
-    Ok(reports.into_iter().filter_map(|report| serde_json::from_value(report).ok()).collect())
+    // It can also emit an invalid value inside one optional report. Stats are diagnostic data,
+    // so isolate the top-level objects and retain the reports we understand instead of failing
+    // the entire native callback because one entry is newer or malformed.
+    let reports = split_rtc_stats_reports(stats)?;
+    Ok(reports.into_iter().filter_map(|report| serde_json::from_str(report).ok()).collect())
+}
+
+fn split_rtc_stats_reports(stats: &str) -> Result<Vec<&str>, RtcError> {
+    let stats = stats.trim();
+    let bytes = stats.as_bytes();
+    if bytes.first() != Some(&b'[') || bytes.last() != Some(&b']') {
+        return Err(invalid_stats_report("expected a JSON array"));
+    }
+
+    let mut reports = Vec::new();
+    let mut cursor = 1;
+    while cursor < bytes.len() - 1 {
+        cursor = skip_whitespace(bytes, cursor);
+        if cursor == bytes.len() - 1 {
+            break;
+        }
+        if bytes[cursor] != b'{' {
+            return Err(invalid_stats_report("expected a report object"));
+        }
+
+        let start = cursor;
+        let mut depth = 0_u32;
+        let mut in_string = false;
+        let mut escaped = false;
+        let mut end = None;
+        while cursor < bytes.len() - 1 {
+            let byte = bytes[cursor];
+            cursor += 1;
+            if in_string {
+                if escaped {
+                    escaped = false;
+                } else if byte == b'\\' {
+                    escaped = true;
+                } else if byte == b'"' {
+                    in_string = false;
+                }
+                continue;
+            }
+            match byte {
+                b'"' => in_string = true,
+                b'{' => depth += 1,
+                b'}' if depth == 1 => {
+                    end = Some(cursor);
+                    break;
+                }
+                b'}' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+        let Some(end) = end else {
+            return Err(invalid_stats_report("unterminated report object"));
+        };
+        reports.push(&stats[start..end]);
+
+        cursor = skip_whitespace(bytes, cursor);
+        match bytes.get(cursor) {
+            Some(b',') => {
+                cursor = skip_whitespace(bytes, cursor + 1);
+                if cursor == bytes.len() - 1 {
+                    return Err(invalid_stats_report("trailing report separator"));
+                }
+            }
+            Some(b']') => break,
+            _ => return Err(invalid_stats_report("expected a report separator")),
+        }
+    }
+    Ok(reports)
+}
+
+fn skip_whitespace(bytes: &[u8], mut cursor: usize) -> usize {
+    while bytes.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+        cursor += 1;
+    }
+    cursor
+}
+
+fn invalid_stats_report(message: &str) -> RtcError {
+    RtcError {
+        error_type: RtcErrorType::Internal,
+        message: format!("failed to parse WebRTC stats report: {message}"),
+    }
 }
 
 /// Values from https://www.w3.org/TR/webrtc-stats/ (NOTE: Some of the structs are not in the SPEC
@@ -84,6 +161,21 @@ mod deserialization_tests {
 
         assert_eq!(stats.len(), 1);
         assert!(matches!(stats[0], RtcStats::PeerConnection(_)));
+    }
+
+    #[test]
+    fn malformed_stats_entries_do_not_discard_known_entries() {
+        let stats = deserialize_rtc_stats(
+            r#"[
+                {"type":"peer-connection","id":"first","timestamp":1},
+                {"type":"future-report","invalid-map":{1:2}},
+                {"type":"peer-connection","id":"second","timestamp":2}
+            ]"#,
+        )
+        .expect("valid reports around a malformed entry must deserialize");
+
+        assert_eq!(stats.len(), 2);
+        assert!(stats.iter().all(|stat| matches!(stat, RtcStats::PeerConnection(_))));
     }
 }
 
