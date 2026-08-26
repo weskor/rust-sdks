@@ -24,8 +24,6 @@ fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let is_desktop = target_os == "linux" || target_os == "windows" || target_os == "macos";
-    let build_desktop_capturer =
-        is_desktop && env::var_os("CARGO_FEATURE_DESKTOP_CAPTURER").is_some();
 
     println!("cargo:rerun-if-env-changed=LK_DEBUG_WEBRTC");
     println!("cargo:rerun-if-env-changed=LK_CUSTOM_WEBRTC");
@@ -60,7 +58,7 @@ fn main() {
         "src/packet_trailer.rs",
     ];
 
-    if build_desktop_capturer {
+    if is_desktop {
         rust_files.push("src/desktop_capturer.rs");
     }
 
@@ -103,7 +101,7 @@ fn main() {
         "src/packet_trailer_av1.cpp",
     ]);
 
-    if build_desktop_capturer {
+    if is_desktop {
         builder.file("src/desktop_capturer.cpp");
     }
 
@@ -127,7 +125,8 @@ fn main() {
     ]);
     builder.define("WEBRTC_APM_DEBUG_DUMP", "0");
 
-    println!("cargo:rustc-link-search=native={}", webrtc_lib.to_str().unwrap());
+    let webrtc_link_lib = prepare_webrtc_link_library(&webrtc_lib, &target_os);
+    println!("cargo:rustc-link-search=native={}", webrtc_link_lib.to_str().unwrap());
 
     for (key, value) in webrtc_sys_build::webrtc_defines() {
         let value = value.as_deref();
@@ -629,6 +628,43 @@ fn libcxx_min_clang_major(libcxx: &path::Path) -> u32 {
             Some(ver / 100)
         })
         .unwrap_or(FALLBACK)
+}
+
+fn prepare_webrtc_link_library(webrtc_lib: &Path, target_os: &str) -> PathBuf {
+    if target_os != "linux" {
+        return webrtc_lib.to_path_buf();
+    }
+
+    // libwebrtc's lazy PipeWire loader exports weak pw_* trampolines whose
+    // function pointers remain unset until its own desktop capturer starts.
+    // Those trampolines otherwise capture pipewire-rs calls in applications
+    // that use a different portal capture implementation, causing a null call.
+    let output_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("webrtc-link");
+    std::fs::create_dir_all(&output_dir).unwrap();
+    let source = webrtc_lib.join("libwebrtc.a");
+    let destination = output_dir.join("libwebrtc.a");
+    std::fs::copy(source, &destination).unwrap();
+
+    let mut command = Command::new(env::var_os("OBJCOPY").unwrap_or_else(|| "objcopy".into()));
+    for symbol in [
+        "pw_context_connect",
+        "pw_context_destroy",
+        "pw_context_new",
+        "pw_core_disconnect",
+        "pw_init",
+        "pw_stream_add_listener",
+        "pw_stream_connect",
+        "pw_stream_dequeue_buffer",
+        "pw_stream_destroy",
+        "pw_stream_new",
+        "pw_stream_queue_buffer",
+    ] {
+        command.arg("--redefine-sym");
+        command.arg(format!("{symbol}=webrtc_lazy_{symbol}"));
+    }
+    let status = command.arg(&destination).status().unwrap();
+    assert!(status.success(), "failed to namespace libwebrtc PipeWire symbols");
+    output_dir
 }
 
 fn add_gio_headers(builder: &mut cc::Build) {

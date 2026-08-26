@@ -9,7 +9,6 @@ repository.workspace = true
 
 [features]
 default = []
-desktop-capturer = ["webrtc-sys/desktop-capturer"]
 
 # On Wayland, libwebrtc uses GDBus to communicate with the XDG Desktop Portal.
 # GDBus requires a GLib event loop to be running. Enable this feature if you
