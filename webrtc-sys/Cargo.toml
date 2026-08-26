@@ -9,6 +9,7 @@ repository.workspace = true
 
 [features]
 default = []
+desktop-capturer = []
 
 [dependencies]
 cxx = "1.0"

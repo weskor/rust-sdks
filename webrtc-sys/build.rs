@@ -24,6 +24,8 @@ fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let is_desktop = target_os == "linux" || target_os == "windows" || target_os == "macos";
+    let build_desktop_capturer =
+        is_desktop && env::var_os("CARGO_FEATURE_DESKTOP_CAPTURER").is_some();
 
     println!("cargo:rerun-if-env-changed=LK_DEBUG_WEBRTC");
     println!("cargo:rerun-if-env-changed=LK_CUSTOM_WEBRTC");
@@ -58,7 +60,7 @@ fn main() {
         "src/packet_trailer.rs",
     ];
 
-    if is_desktop {
+    if build_desktop_capturer {
         rust_files.push("src/desktop_capturer.rs");
     }
 
@@ -101,7 +103,7 @@ fn main() {
         "src/packet_trailer_av1.cpp",
     ]);
 
-    if is_desktop {
+    if build_desktop_capturer {
         builder.file("src/desktop_capturer.cpp");
     }
 
