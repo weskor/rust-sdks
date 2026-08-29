@@ -18,6 +18,14 @@ use crate::impl_thread_safety;
 
 #[cxx::bridge(namespace = "livekit_ffi")]
 pub mod ffi {
+    /// Platform microphone-volume capability and current range.
+    pub struct MicrophoneVolumeInfo {
+        pub available: bool,
+        pub min: u32,
+        pub max: u32,
+        pub current: u32,
+    }
+
     unsafe extern "C++" {
         include!("livekit/audio_device_controller.h");
         include!("livekit/peer_connection_factory.h");
@@ -43,6 +51,9 @@ pub mod ffi {
         fn init_recording(self: &AudioDeviceController) -> bool;
         fn start_recording(self: &AudioDeviceController) -> bool;
         fn recording_is_initialized(self: &AudioDeviceController) -> bool;
+
+        fn microphone_volume_info(self: &AudioDeviceController) -> MicrophoneVolumeInfo;
+        fn set_microphone_volume(self: &AudioDeviceController, volume: u32) -> bool;
 
         fn stop_playout(self: &AudioDeviceController) -> bool;
         fn init_playout(self: &AudioDeviceController) -> bool;
@@ -93,6 +104,13 @@ mod tests {
             let _ = audio.recording_device_name(0);
             let guid = audio.recording_device_guid(0);
             let _ = audio.set_recording_device_by_guid(guid);
+
+            let volume = audio.microphone_volume_info();
+            if volume.available {
+                assert!(volume.max >= volume.min);
+                assert!((volume.min..=volume.max).contains(&volume.current));
+                assert!(audio.set_microphone_volume(volume.current));
+            }
         }
 
         if playout_count > 0 {

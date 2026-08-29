@@ -133,6 +133,27 @@ bool AudioDeviceController::recording_is_initialized() const {
   return adm_proxy_->RecordingIsInitialized();
 }
 
+MicrophoneVolumeInfo AudioDeviceController::microphone_volume_info() const {
+  MicrophoneVolumeInfo info{false, 0, 0, 0};
+  bool available = false;
+  if (adm_proxy_->MicrophoneVolumeIsAvailable(&available) != 0 || !available) {
+    return info;
+  }
+  if (adm_proxy_->MinMicrophoneVolume(&info.min) != 0 ||
+      adm_proxy_->MaxMicrophoneVolume(&info.max) != 0 ||
+      adm_proxy_->MicrophoneVolume(&info.current) != 0 || info.max < info.min) {
+    return info;
+  }
+  info.available = true;
+  return info;
+}
+
+bool AudioDeviceController::set_microphone_volume(uint32_t volume) const {
+  const auto info = microphone_volume_info();
+  return info.available && volume >= info.min && volume <= info.max &&
+         adm_proxy_->SetMicrophoneVolume(volume) == 0;
+}
+
 bool AudioDeviceController::stop_playout() const {
   return adm_proxy_->StopPlayout() == 0;
 }

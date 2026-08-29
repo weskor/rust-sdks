@@ -24,6 +24,13 @@ use crate::{
 
 #[cxx::bridge(namespace = "livekit_ffi")]
 pub mod ffi {
+    /// Software audio processing requested for a platform-ADM microphone track.
+    pub struct DeviceAudioProcessing {
+        pub echo_cancellation: bool,
+        pub noise_suppression: bool,
+        pub automatic_gain_control: bool,
+    }
+
     pub struct CandidatePair {
         local: SharedPtr<Candidate>,
         remote: SharedPtr<Candidate>,
@@ -119,6 +126,12 @@ pub mod ffi {
         fn create_device_audio_track(
             self: &PeerConnectionFactory,
             label: String,
+        ) -> SharedPtr<AudioTrack>;
+
+        fn create_device_audio_track_with_processing(
+            self: &PeerConnectionFactory,
+            label: String,
+            processing: DeviceAudioProcessing,
         ) -> SharedPtr<AudioTrack>;
 
         fn rtp_sender_capabilities(
