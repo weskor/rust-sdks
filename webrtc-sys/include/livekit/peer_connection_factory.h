@@ -68,6 +68,8 @@ class PeerConnectionFactory {
   // This creates a track that captures from the selected recording device
   std::shared_ptr<AudioTrack> create_device_audio_track(
       rust::String label) const;
+  std::shared_ptr<AudioTrack> create_device_audio_track_with_processing(
+      rust::String label, DeviceAudioProcessing processing) const;
 
   RtpCapabilities rtp_sender_capabilities(MediaType type) const;
 

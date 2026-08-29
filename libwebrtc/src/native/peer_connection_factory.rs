@@ -24,7 +24,7 @@ use crate::{
     audio_track::RtcAudioTrack,
     imp::{audio_track as imp_at, peer_connection as imp_pc, video_track as imp_vt},
     peer_connection::PeerConnection,
-    peer_connection_factory::RtcConfiguration,
+    peer_connection_factory::{DeviceAudioProcessing, MicrophoneVolume, RtcConfiguration},
     rtp_parameters::RtpCapabilities,
     video_source::native::NativeVideoSource,
     video_track::RtcVideoTrack,
@@ -133,6 +133,26 @@ impl PeerConnectionFactory {
         }
     }
 
+    /// Create a Platform ADM microphone track with software audio processing options.
+    pub fn create_device_audio_track_with_processing(
+        &self,
+        label: &str,
+        processing: DeviceAudioProcessing,
+    ) -> RtcAudioTrack {
+        let processing = sys_pcf::ffi::DeviceAudioProcessing {
+            echo_cancellation: processing.echo_cancellation,
+            noise_suppression: processing.noise_suppression,
+            automatic_gain_control: processing.automatic_gain_control,
+        };
+        RtcAudioTrack {
+            handle: imp_at::RtcAudioTrack {
+                sys_handle: self
+                    .sys_handle
+                    .create_device_audio_track_with_processing(label.to_string(), processing),
+            },
+        }
+    }
+
     pub fn get_rtp_sender_capabilities(&self, media_type: MediaType) -> RtpCapabilities {
         self.sys_handle.rtp_sender_capabilities(media_type.into()).into()
     }
@@ -215,6 +235,21 @@ impl PeerConnectionFactory {
     /// Check if recording is initialized
     pub fn recording_is_initialized(&self) -> bool {
         self.sys_handle.audio_device().recording_is_initialized()
+    }
+
+    /// Return the selected microphone's platform volume capability and range.
+    pub fn microphone_volume(&self) -> Option<MicrophoneVolume> {
+        let info = self.sys_handle.audio_device().microphone_volume_info();
+        info.available.then_some(MicrophoneVolume {
+            min: info.min,
+            max: info.max,
+            current: info.current,
+        })
+    }
+
+    /// Set the selected microphone's platform volume.
+    pub fn set_microphone_volume(&self, volume: u32) -> bool {
+        self.sys_handle.audio_device().set_microphone_volume(volume)
     }
 
     /// Stop playout (clears initialized state, allowing device switch)

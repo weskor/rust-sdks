@@ -23,6 +23,11 @@
 #include "rust/cxx.h"
 
 namespace livekit_ffi {
+class AudioDeviceController;
+}  // namespace livekit_ffi
+#include "webrtc-sys/src/audio_device_controller.rs.h"
+
+namespace livekit_ffi {
 
 class AudioDeviceController {
  public:
@@ -47,6 +52,10 @@ class AudioDeviceController {
   bool init_recording() const;
   bool start_recording() const;
   bool recording_is_initialized() const;
+
+  // Microphone volume
+  MicrophoneVolumeInfo microphone_volume_info() const;
+  bool set_microphone_volume(uint32_t volume) const;
 
   // Playout control
   bool stop_playout() const;

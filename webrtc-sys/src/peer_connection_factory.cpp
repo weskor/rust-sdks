@@ -244,11 +244,18 @@ std::shared_ptr<AudioTrack> PeerConnectionFactory::create_audio_track(
 
 std::shared_ptr<AudioTrack> PeerConnectionFactory::create_device_audio_track(
     rust::String label) const {
+  return create_device_audio_track_with_processing(
+      std::move(label), DeviceAudioProcessing{true, true, true});
+}
+
+std::shared_ptr<AudioTrack>
+PeerConnectionFactory::create_device_audio_track_with_processing(
+    rust::String label, DeviceAudioProcessing processing) const {
   // Create an audio source that uses the ADM for capture
   webrtc::AudioOptions audio_options;
-  audio_options.echo_cancellation = true;
-  audio_options.auto_gain_control = true;
-  audio_options.noise_suppression = true;
+  audio_options.echo_cancellation = processing.echo_cancellation;
+  audio_options.auto_gain_control = processing.automatic_gain_control;
+  audio_options.noise_suppression = processing.noise_suppression;
 
   webrtc::scoped_refptr<webrtc::AudioSourceInterface> audio_source =
       peer_factory_->CreateAudioSource(audio_options);

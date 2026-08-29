@@ -39,6 +39,28 @@ pub enum IceTransportsType {
     All,
 }
 
+/// Software audio processing for a platform-ADM microphone track.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct DeviceAudioProcessing {
+    pub echo_cancellation: bool,
+    pub noise_suppression: bool,
+    pub automatic_gain_control: bool,
+}
+
+impl Default for DeviceAudioProcessing {
+    fn default() -> Self {
+        Self { echo_cancellation: true, noise_suppression: true, automatic_gain_control: true }
+    }
+}
+
+/// Platform microphone-volume capability and current range.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct MicrophoneVolume {
+    pub min: u32,
+    pub max: u32,
+    pub current: u32,
+}
+
 /// Configuration for a [`PeerConnection`].
 ///
 /// This type is `#[non_exhaustive]`: construct it from [`RtcConfiguration::default`]
@@ -118,7 +140,7 @@ impl PeerConnectionFactory {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    use super::PeerConnectionFactory;
+    use super::{DeviceAudioProcessing, MicrophoneVolume, PeerConnectionFactory};
 
     #[test]
     fn zero_playout_delay_factory_uses_force_playout_delay_field_trial() {
@@ -132,7 +154,7 @@ mod tests {
 }
 
 pub mod native {
-    use super::PeerConnectionFactory;
+    use super::{DeviceAudioProcessing, MicrophoneVolume, PeerConnectionFactory};
     use crate::{
         audio_source::native::NativeAudioSource, audio_track::RtcAudioTrack,
         video_source::native::NativeVideoSource, video_track::RtcVideoTrack,
@@ -145,6 +167,12 @@ pub mod native {
         /// Create an audio track that uses the Platform ADM for capture.
         /// The track will capture audio from the selected recording device.
         fn create_device_audio_track(&self, label: &str) -> RtcAudioTrack;
+        /// Create a platform-ADM microphone track with software audio processing options.
+        fn create_device_audio_track_with_processing(
+            &self,
+            label: &str,
+            processing: DeviceAudioProcessing,
+        ) -> RtcAudioTrack;
 
         // Device enumeration
         fn playout_devices(&self) -> i16;
@@ -167,6 +195,10 @@ pub mod native {
         fn init_recording(&self) -> bool;
         fn start_recording(&self) -> bool;
         fn recording_is_initialized(&self) -> bool;
+        /// Return the selected microphone's volume capability and range.
+        fn microphone_volume(&self) -> Option<MicrophoneVolume>;
+        /// Set the selected microphone's platform volume.
+        fn set_microphone_volume(&self, volume: u32) -> bool;
 
         // Playout control (for device switching while active)
         fn stop_playout(&self) -> bool;
@@ -216,6 +248,14 @@ pub mod native {
 
         fn create_device_audio_track(&self, label: &str) -> RtcAudioTrack {
             self.handle.create_device_audio_track(label)
+        }
+
+        fn create_device_audio_track_with_processing(
+            &self,
+            label: &str,
+            processing: DeviceAudioProcessing,
+        ) -> RtcAudioTrack {
+            self.handle.create_device_audio_track_with_processing(label, processing)
         }
 
         fn playout_devices(&self) -> i16 {
@@ -272,6 +312,14 @@ pub mod native {
 
         fn recording_is_initialized(&self) -> bool {
             self.handle.recording_is_initialized()
+        }
+
+        fn microphone_volume(&self) -> Option<MicrophoneVolume> {
+            self.handle.microphone_volume()
+        }
+
+        fn set_microphone_volume(&self, volume: u32) -> bool {
+            self.handle.set_microphone_volume(volume)
         }
 
         fn stop_playout(&self) -> bool {
@@ -345,5 +393,22 @@ pub mod native {
         fn is_platform_adm_active(&self) -> bool {
             self.handle.is_platform_adm_active()
         }
+    }
+}
+
+#[cfg(test)]
+mod audio_processing_tests {
+    use super::DeviceAudioProcessing;
+
+    #[test]
+    fn device_audio_processing_defaults_to_current_behavior() {
+        assert_eq!(
+            DeviceAudioProcessing::default(),
+            DeviceAudioProcessing {
+                echo_cancellation: true,
+                noise_suppression: true,
+                automatic_gain_control: true,
+            }
+        );
     }
 }
