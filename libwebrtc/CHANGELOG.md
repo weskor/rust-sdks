@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Add opt-in `RtcConfiguration::require_frame_encryption` to drop media before
+  a frame cryptor is attached, including the native receive-channel startup
+  interval before `on_track`. Existing unencrypted peer connections keep their
+  default behavior.
+- Enable receiver frame cryptors before native attachment. Required-encryption
+  peers use synchronous native crypto adapters only after the real encoded-frame
+  transformer is installed; missing keys and disabled cryptors drop frames
+  instead of bypassing encryption. The bridge requires one encoded-frame copy
+  through WebRTC's synchronous crypto output buffer; PCM/playout stays unchanged.
+
 ## [0.3.26](https://github.com/livekit/rust-sdks/compare/rust-sdks/libwebrtc@0.3.25...rust-sdks/libwebrtc@0.3.26) - 2026-02-16
 
 ### Other

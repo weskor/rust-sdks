@@ -81,6 +81,10 @@ pub struct RtcConfiguration {
     /// `enable_sctp_snap` RTCConfiguration field, so it must be set the same at
     /// PeerConnection creation and every set_configuration.
     pub enable_sctp_snap: bool,
+    /// Drop media until an enabled frame cryptor is installed, including before
+    /// the remote track callback. Disabled cryptors drop rather than bypass.
+    /// Keep this immutable for the lifetime of the peer connection.
+    pub require_frame_encryption: bool,
 }
 
 impl Default for RtcConfiguration {
@@ -90,6 +94,7 @@ impl Default for RtcConfiguration {
             continual_gathering_policy: ContinualGatheringPolicy::GatherContinually,
             ice_transport_type: IceTransportsType::All,
             enable_sctp_snap: false,
+            require_frame_encryption: false,
         }
     }
 }

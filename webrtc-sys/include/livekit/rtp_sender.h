@@ -71,6 +71,11 @@ class RtpSender {
     return sender_;
   }
 
+  bool requires_frame_encryption() const {
+    return peer_connection_->GetConfiguration()
+        .crypto_options.sframe.require_frame_encryption;
+  }
+
  private:
   std::shared_ptr<RtcRuntime> rtc_runtime_;
   webrtc::scoped_refptr<webrtc::RtpSenderInterface> sender_;
