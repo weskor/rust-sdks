@@ -141,6 +141,10 @@ impl FrameCryptor {
         fc
     }
 
+    /// Attaches an enabled decryptor, dropping encrypted frames until a key is available.
+    ///
+    /// Unlike sender cryptors, receivers start enabled before the native transformer
+    /// is installed so ciphertext cannot bypass decryption during construction.
     pub fn new_for_rtp_receiver(
         peer_factory: &PeerConnectionFactory,
         participant_id: String,
@@ -312,5 +316,60 @@ impl From<sys_fc::ffi::EncryptedPacket> for EncryptedPacket {
 impl From<EncryptedPacket> for sys_fc::ffi::EncryptedPacket {
     fn from(value: EncryptedPacket) -> Self {
         Self { data: value.data, iv: value.iv, key_index: value.key_index }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        peer_connection_factory::RtcConfiguration,
+        rtp_transceiver::{RtpTransceiverDirection, RtpTransceiverInit},
+        MediaType,
+    };
+
+    #[test]
+    fn receiver_cryptor_starts_enabled_without_a_key() {
+        check_new_receiver(false);
+        check_new_receiver(true);
+    }
+
+    fn check_new_receiver(require_frame_encryption: bool) {
+        let factory = PeerConnectionFactory::default();
+        let mut config = RtcConfiguration::default();
+        config.require_frame_encryption = require_frame_encryption;
+        let peer = factory.create_peer_connection(config).unwrap();
+        let receiver = peer
+            .add_transceiver_for_media(
+                MediaType::Audio,
+                RtpTransceiverInit {
+                    direction: RtpTransceiverDirection::RecvOnly,
+                    stream_ids: Vec::new(),
+                    send_encodings: Vec::new(),
+                },
+            )
+            .unwrap()
+            .receiver();
+        let provider = KeyProvider::new(KeyProviderOptions {
+            shared_key: false,
+            ratchet_window_size: 0,
+            ratchet_salt: b"test".to_vec(),
+            failure_tolerance: -1,
+            key_ring_size: 16,
+            key_derivation_algorithm: KeyDerivationAlgorithm::PBKDF2,
+        });
+        let cryptor = FrameCryptor::new_for_rtp_receiver(
+            &factory,
+            "pending".into(),
+            EncryptionAlgorithm::AesGcm,
+            provider,
+            receiver,
+        );
+        assert!(cryptor.enabled(), "ciphertext must never bypass a new receiver cryptor");
+        cryptor.set_enabled(false);
+        assert!(!cryptor.enabled());
+        cryptor.set_enabled(true);
+        assert!(cryptor.enabled());
+        peer.close();
     }
 }

@@ -95,6 +95,7 @@ pub mod ffi {
         // WARP/SNAP: enable SCTP-INIT-in-SDP. Must be carried consistently across
         // create + set_configuration (it is an immutable RTCConfiguration field).
         pub enable_sctp_snap: bool,
+        pub require_frame_encryption: bool,
     }
 
     extern "C++" {

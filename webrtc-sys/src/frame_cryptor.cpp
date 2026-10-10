@@ -16,9 +16,12 @@
 
 #include "livekit/frame_cryptor.h"
 
+#include <algorithm>
 #include <memory>
 
 #include "absl/types/optional.h"
+#include "api/crypto/frame_decryptor_interface.h"
+#include "api/crypto/frame_encryptor_interface.h"
 #include "api/make_ref_counted.h"
 #include "livekit/peer_connection.h"
 #include "livekit/peer_connection_factory.h"
@@ -28,6 +31,61 @@
 #include "webrtc-sys/src/frame_cryptor.rs.h"
 
 namespace livekit_ffi {
+
+// WebRTC's require_frame_encryption gate runs before the asynchronous encoded
+// frame transformer. Leave its encryptor/decryptor absent until the transformer
+// is installed, then bridge into it. These adapters do NOT implement encryption:
+// the always-enabled FrameCryptorTransformer does. Disabling a required cryptor
+// closes the adapter instead of turning the transformer into a plaintext bypass.
+// The synchronous API requires a separate output buffer, hence one encoded-frame
+// copy; it is not a PCM copy or a second audio processing/playout path.
+class RequiredFrameEncryptor : public webrtc::FrameEncryptorInterface {
+ public:
+  explicit RequiredFrameEncryptor(std::shared_ptr<std::atomic_bool> enabled)
+      : enabled_(std::move(enabled)) {}
+
+  int Encrypt(webrtc::MediaType, uint32_t, std::span<const uint8_t>,
+              std::span<const uint8_t> frame, std::span<uint8_t> output,
+              size_t* bytes_written) override {
+    *bytes_written = 0;
+    if (!enabled_->load() || output.size() < frame.size()) {
+      return 1;
+    }
+    std::copy(frame.begin(), frame.end(), output.begin());
+    *bytes_written = frame.size();
+    return 0;
+  }
+
+  size_t GetMaxCiphertextByteSize(webrtc::MediaType, size_t size) override {
+    return size;
+  }
+
+ private:
+  std::shared_ptr<std::atomic_bool> enabled_;
+};
+
+class RequiredFrameDecryptor : public webrtc::FrameDecryptorInterface {
+ public:
+  explicit RequiredFrameDecryptor(std::shared_ptr<std::atomic_bool> enabled)
+      : enabled_(std::move(enabled)) {}
+
+  Result Decrypt(webrtc::MediaType, const std::vector<uint32_t>&,
+                 std::span<const uint8_t>, std::span<const uint8_t> frame,
+                 std::span<uint8_t> output) override {
+    if (!enabled_->load() || output.size() < frame.size()) {
+      return Result(Status::kRecoverable, 0);
+    }
+    std::copy(frame.begin(), frame.end(), output.begin());
+    return Result(Status::kOk, frame.size());
+  }
+
+  size_t GetMaxPlaintextByteSize(webrtc::MediaType, size_t size) override {
+    return size;
+  }
+
+ private:
+  std::shared_ptr<std::atomic_bool> enabled_;
+};
 
 class ChainedFrameTransformer : public webrtc::FrameTransformerInterface,
                                 public webrtc::TransformedFrameCallback {
@@ -126,7 +184,8 @@ FrameCryptor::FrameCryptor(
     const std::string participant_id,
     webrtc::FrameCryptorTransformer::Algorithm algorithm,
     webrtc::scoped_refptr<webrtc::KeyProvider> key_provider,
-    webrtc::scoped_refptr<webrtc::RtpSenderInterface> sender)
+    webrtc::scoped_refptr<webrtc::RtpSenderInterface> sender,
+    bool require_encryption)
     : rtc_runtime_(rtc_runtime),
       participant_id_(participant_id),
       key_provider_(key_provider),
@@ -139,8 +198,15 @@ FrameCryptor::FrameCryptor(
       new webrtc::FrameCryptorTransformer(rtc_runtime->signaling_thread(),
                                           participant_id, mediaType, algorithm,
                                           key_provider_));
+  if (require_encryption) {
+    enabled_gate_ = std::make_shared<std::atomic_bool>(false);
+  }
+  e2ee_transformer_->SetEnabled(require_encryption);
   sender->SetEncoderToPacketizerFrameTransformer(e2ee_transformer_);
-  e2ee_transformer_->SetEnabled(false);
+  if (enabled_gate_) {
+    sender->SetFrameEncryptor(
+        webrtc::make_ref_counted<RequiredFrameEncryptor>(enabled_gate_));
+  }
 }
 
 FrameCryptor::FrameCryptor(
@@ -148,7 +214,8 @@ FrameCryptor::FrameCryptor(
     const std::string participant_id,
     webrtc::FrameCryptorTransformer::Algorithm algorithm,
     webrtc::scoped_refptr<webrtc::KeyProvider> key_provider,
-    webrtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver)
+    webrtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver,
+    bool require_encryption)
     : rtc_runtime_(rtc_runtime),
       participant_id_(participant_id),
       key_provider_(key_provider),
@@ -161,8 +228,15 @@ FrameCryptor::FrameCryptor(
       new webrtc::FrameCryptorTransformer(rtc_runtime->signaling_thread(),
                                           participant_id, mediaType, algorithm,
                                           key_provider_));
+  // A disabled transformer forwards ciphertext to the decoder unchanged.
+  // Enable before attaching, including while the participant key is pending.
+  e2ee_transformer_->SetEnabled(true);
   receiver->SetDepacketizerToDecoderFrameTransformer(e2ee_transformer_);
-  e2ee_transformer_->SetEnabled(false);
+  if (require_encryption) {
+    enabled_gate_ = std::make_shared<std::atomic_bool>(true);
+    receiver->SetFrameDecryptor(
+        webrtc::make_ref_counted<RequiredFrameDecryptor>(enabled_gate_));
+  }
 }
 
 FrameCryptor::~FrameCryptor() {
@@ -235,12 +309,16 @@ void NativeFrameCryptorObserver::OnFrameCryptionStateChanged(
 
 void FrameCryptor::set_enabled(bool enabled) const {
   webrtc::MutexLock lock(&mutex_);
-  e2ee_transformer_->SetEnabled(enabled);
+  if (enabled_gate_) {
+    enabled_gate_->store(enabled);
+  } else {
+    e2ee_transformer_->SetEnabled(enabled);
+  }
 }
 
 bool FrameCryptor::enabled() const {
   webrtc::MutexLock lock(&mutex_);
-  return e2ee_transformer_->enabled();
+  return enabled_gate_ ? enabled_gate_->load() : e2ee_transformer_->enabled();
 }
 
 void FrameCryptor::set_key_index(int32_t index) const {
@@ -337,7 +415,8 @@ std::shared_ptr<FrameCryptor> new_frame_cryptor_for_rtp_sender(
       peer_factory->rtc_runtime(),
       std::string(participant_id.data(), participant_id.size()),
       AlgorithmToFrameCryptorAlgorithm(algorithm),
-      key_provider->rtc_key_provider(), sender->rtc_sender());
+      key_provider->rtc_key_provider(), sender->rtc_sender(),
+      sender->requires_frame_encryption());
 }
 
 std::shared_ptr<FrameCryptor> new_frame_cryptor_for_rtp_receiver(
@@ -350,7 +429,8 @@ std::shared_ptr<FrameCryptor> new_frame_cryptor_for_rtp_receiver(
       peer_factory->rtc_runtime(),
       std::string(participant_id.data(), participant_id.size()),
       AlgorithmToFrameCryptorAlgorithm(algorithm),
-      key_provider->rtc_key_provider(), receiver->rtc_receiver());
+      key_provider->rtc_key_provider(), receiver->rtc_receiver(),
+      receiver->requires_frame_encryption());
 }
 
 std::shared_ptr<DataPacketCryptor> new_data_packet_cryptor(

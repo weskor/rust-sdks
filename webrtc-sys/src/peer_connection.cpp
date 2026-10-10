@@ -56,6 +56,8 @@ webrtc::PeerConnectionInterface::RTCConfiguration to_native_rtc_configuration(
           config.ice_transport_type);
 
   rtc_config.enable_sctp_snap = config.enable_sctp_snap;
+  rtc_config.crypto_options.sframe.require_frame_encryption =
+      config.require_frame_encryption;
 
   return rtc_config;
 }

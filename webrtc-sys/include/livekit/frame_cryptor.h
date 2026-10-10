@@ -18,6 +18,7 @@
 
 #include <stdint.h>
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <vector>
@@ -130,13 +131,15 @@ class FrameCryptor {
                const std::string participant_id,
                webrtc::FrameCryptorTransformer::Algorithm algorithm,
                webrtc::scoped_refptr<webrtc::KeyProvider> key_provider,
-               webrtc::scoped_refptr<webrtc::RtpSenderInterface> sender);
+               webrtc::scoped_refptr<webrtc::RtpSenderInterface> sender,
+               bool require_encryption);
 
   FrameCryptor(std::shared_ptr<RtcRuntime> rtc_runtime,
                const std::string participant_id,
                webrtc::FrameCryptorTransformer::Algorithm algorithm,
                webrtc::scoped_refptr<webrtc::KeyProvider> key_provider,
-               webrtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver);
+               webrtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver,
+               bool require_encryption);
   ~FrameCryptor();
 
   /// Enable/Disable frame crypto for the sender or receiver.
@@ -171,6 +174,9 @@ class FrameCryptor {
   webrtc::scoped_refptr<webrtc::KeyProvider> key_provider_;
   webrtc::scoped_refptr<webrtc::RtpSenderInterface> sender_;
   webrtc::scoped_refptr<webrtc::RtpReceiverInterface> receiver_;
+  // Required-encryption peers never disable the transformer (which bypasses).
+  // Their synchronous native crypto adapters gate frames instead.
+  std::shared_ptr<std::atomic_bool> enabled_gate_;
   mutable webrtc::scoped_refptr<NativeFrameCryptorObserver> observer_;
   mutable webrtc::scoped_refptr<webrtc::FrameTransformerInterface>
       chained_transformer_;
