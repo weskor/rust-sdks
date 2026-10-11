@@ -13,8 +13,8 @@
 // limitations under the License.
 
 // Real VP8 -> SRTP -> AES-GCM -> native decoder loopback, without services or devices.
-// The stream is installed before negotiation, not from on_track, so startup media
-// is observable even before the application can attach a receiver cryptor.
+// The negotiated on_track callback installs a sink before ICE connects, leaving
+// real startup media observable before a receiver cryptor is attached.
 
 use std::{
     future::poll_fn,
@@ -84,10 +84,11 @@ struct Loopback {
     sender: PeerConnection,
     receiver: PeerConnection,
     rtp_sender: RtpSender,
-    rtp_receiver: RtpReceiver,
-    stream: NativeVideoStream,
+    rtp_receiver: Option<RtpReceiver>,
+    stream: Option<NativeVideoStream>,
     luma: Arc<AtomicU8>,
     tasks: Vec<JoinHandle<()>>,
+    received_tracks: mpsc::UnboundedReceiver<(RtpReceiver, NativeVideoStream)>,
 }
 
 impl Loopback {
@@ -137,12 +138,13 @@ impl Loopback {
         assert!(!vp8.is_empty(), "native regression requires the software VP8 codec");
         sending.set_codec_preferences(vp8.clone()).unwrap();
         receiving.set_codec_preferences(vp8).unwrap();
-        let rtp_receiver = receiving.receiver();
-        let Some(MediaStreamTrack::Video(track)) = rtp_receiver.track() else {
-            panic!("pre-negotiation video transceiver must expose its receiver track");
-        };
-        let stream = NativeVideoStream::new(track);
         let luma = Arc::new(AtomicU8::new(48));
+        let (track_sender, received_tracks) = mpsc::unbounded_channel();
+        receiver.on_track(Some(Box::new(move |event| {
+            if let MediaStreamTrack::Video(track) = event.track {
+                let _ = track_sender.send((event.receiver, NativeVideoStream::new(track)));
+            }
+        })));
         let capture_luma = luma.clone();
         let capture = tokio::spawn(async move {
             let mut current = 48;
@@ -164,10 +166,11 @@ impl Loopback {
             sender,
             receiver,
             rtp_sender: sending.sender(),
-            rtp_receiver,
-            stream,
+            rtp_receiver: None,
+            stream: None,
             luma,
             tasks: vec![capture],
+            received_tracks,
         };
         peers.armed = false;
         loopback
@@ -188,6 +191,11 @@ impl Loopback {
         let answer = self.receiver.create_answer(AnswerOptions::default()).await.unwrap();
         self.receiver.set_local_description(answer.clone()).await.unwrap();
         self.sender.set_remote_description(answer).await.unwrap();
+        // Remote SDP can replace the provisional receiver/track. Observe the
+        // negotiated on_track handles before testing the pre-cryptor gate.
+        let (receiver, stream) = self.received_tracks.recv().await.expect("negotiated video track");
+        self.rtp_receiver = Some(receiver);
+        self.stream = Some(stream);
         // Forward every local ICE candidate, but only once remote SDP exists.
         let receiver = self.receiver.clone();
         self.tasks.push(tokio::spawn(async move {
@@ -231,9 +239,9 @@ impl Loopback {
 
     async fn expect_no_frames(&mut self, phase: &str) {
         let before = self.received_packets().await;
+        let stream = self.stream.as_mut().expect("negotiated receive stream");
         let result =
-            time::timeout(QUIET_INTERVAL, poll_fn(|cx| Pin::new(&mut self.stream).poll_next(cx)))
-                .await;
+            time::timeout(QUIET_INTERVAL, poll_fn(|cx| Pin::new(&mut *stream).poll_next(cx))).await;
         assert!(result.is_err(), "decoded video escaped the receive gate: {phase}");
         assert!(
             self.received_packets().await > before,
@@ -243,9 +251,10 @@ impl Loopback {
 
     async fn expect_pattern(&mut self, luma: u8) {
         self.luma.store(luma, Ordering::Relaxed);
+        let stream = self.stream.as_mut().expect("negotiated receive stream");
         time::timeout(FRAME_TIMEOUT, async {
             loop {
-                let frame = poll_fn(|cx| Pin::new(&mut self.stream).poll_next(cx))
+                let frame = poll_fn(|cx| Pin::new(&mut *stream).poll_next(cx))
                     .await
                     .expect("native video sink closed before authenticated video decoded");
                 if matches_pattern(&frame, luma) {
@@ -265,7 +274,9 @@ impl Drop for Loopback {
         for task in &self.tasks {
             task.abort();
         }
-        self.stream.close();
+        if let Some(stream) = &mut self.stream {
+            stream.close();
+        }
     }
 }
 
@@ -334,7 +345,7 @@ fn receiver_cryptor(
         participant.into(),
         EncryptionAlgorithm::AesGcm,
         provider,
-        loopback.rtp_receiver.clone(),
+        loopback.rtp_receiver.as_ref().expect("negotiated receiver").clone(),
     );
     assert!(cryptor.enabled(), "receiver must be enabled at attachment without a key");
     cryptor
