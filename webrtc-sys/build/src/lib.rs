@@ -29,6 +29,7 @@ use reqwest::StatusCode;
 
 pub const SCRATH_PATH: &str = "livekit_webrtc";
 pub const WEBRTC_TAG: &str = "webrtc-89d790b";
+const DEN_WEBRTC_TAG: &str = "webrtc-den-gated-video-89d790b";
 pub const IGNORE_DEFINES: [&str; 2] = ["CR_CLANG_REVISION", "CR_XCODE_VERSION"];
 
 pub fn target_os() -> String {
@@ -84,6 +85,13 @@ pub fn custom_dir() -> Option<path::PathBuf> {
     None
 }
 
+fn artifact_release() -> (&'static str, &'static str) {
+    match target_os().as_str() {
+        "linux" | "win" => ("weskor/rust-sdks", DEN_WEBRTC_TAG),
+        _ => ("livekit/rust-sdks", WEBRTC_TAG),
+    }
+}
+
 /// Location of the downloaded webrtc binaries
 /// The reason why we don't use OUT_DIR is because we sometimes need to share the same binaries
 /// across multiple crates without dependencies constraints
@@ -93,16 +101,16 @@ pub fn prebuilt_dir() -> path::PathBuf {
     path::Path::new(&target_dir).join(format!(
         "livekit/{}-{}/{}",
         webrtc_triple(),
-        WEBRTC_TAG,
+        artifact_release().1,
         webrtc_triple()
     ))
 }
 
 pub fn download_url() -> String {
+    let (repository, tag) = artifact_release();
     format!(
-        "https://github.com/livekit/rust-sdks/releases/download/{}/{}.zip",
-        WEBRTC_TAG,
-        format!("webrtc-{}", webrtc_triple())
+        "https://github.com/{repository}/releases/download/{tag}/webrtc-{}.zip",
+        webrtc_triple()
     )
 }
 

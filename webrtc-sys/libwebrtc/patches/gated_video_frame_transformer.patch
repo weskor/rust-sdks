@@ -1,0 +1,18 @@
+diff --git a/video/rtp_video_stream_receiver2.cc b/video/rtp_video_stream_receiver2.cc
+--- a/video/rtp_video_stream_receiver2.cc
++++ b/video/rtp_video_stream_receiver2.cc
+@@ -1012,7 +1012,13 @@
+ void RtpVideoStreamReceiver2::OnDecryptedFrame(
+     std::unique_ptr<RtpFrameObject> frame) {
+   RTC_DCHECK_RUN_ON(&packet_sequence_checker_);
+-  OnCompleteFrames(reference_finder_->ManageFrame(std::move(frame)));
++  // A synchronous decryptor can be a required-encryption startup gate. Still
++  // run the encoded-frame transformer before dispatching to the decoder.
++  if (frame_transformer_delegate_) {
++    frame_transformer_delegate_->TransformFrame(std::move(frame));
++  } else {
++    OnCompleteFrames(reference_finder_->ManageFrame(std::move(frame)));
++  }
+ }
+ 
+ void RtpVideoStreamReceiver2::OnDecryptionStatusChange(

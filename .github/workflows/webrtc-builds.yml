@@ -24,67 +24,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - name: win
-            os: windows-2022
-            cmd: .\build_windows.cmd
-            arch: x64
-
-          - name: win
-            os: windows-2022
-            cmd: .\build_windows.cmd
-            arch: arm64
-
-          - name: mac
-            os: macos-latest
-            cmd: ./build_macos.sh
-            arch: x64
-
-          - name: mac
-            os: macos-latest
-            cmd: ./build_macos.sh
-            arch: arm64
-
-          - name: linux
-            os: ubuntu-latest
-            cmd: ./build_linux.sh
-            arch: x64
-
-          - name: linux
-            os: ubuntu-latest
-            cmd: ./build_linux.sh
-            arch: arm64
-
-          - name: android
-            os: ubuntu-latest
-            cmd: ./build_android.sh
-            arch: arm64
-
-          - name: android
-            os: ubuntu-latest
-            cmd: ./build_android.sh
-            arch: arm
-
-          - name: android
-            os: ubuntu-latest
-            cmd: ./build_android.sh
-            arch: x64
-
-          - name: ios
-            out: ios-device-arm64
-            os: macos-latest
-            cmd: ./build_ios.sh
-            arch: arm64
-
-          - name: ios
-            out: ios-simulator-arm64
-            os: macos-latest
-            cmd: ./build_ios.sh
-            arch: arm64
-            buildargs: --environment simulator
+        # Den rebuilds only its two desktop targets; upstream keeps its matrix.
+        target: >-
+          ${{ fromJSON(github.repository == 'weskor/rust-sdks' &&
+          '[{"name":"win","os":"windows-2022","cmd":".\\build_windows.cmd","arch":"x64"},
+            {"name":"linux","os":"ubuntu-latest","cmd":"./build_linux.sh","arch":"x64"}]' ||
+          '[{"name":"win","os":"windows-2022","cmd":".\\build_windows.cmd","arch":"x64"},
+            {"name":"win","os":"windows-2022","cmd":".\\build_windows.cmd","arch":"arm64"},
+            {"name":"mac","os":"macos-latest","cmd":"./build_macos.sh","arch":"x64"},
+            {"name":"mac","os":"macos-latest","cmd":"./build_macos.sh","arch":"arm64"},
+            {"name":"linux","os":"ubuntu-latest","cmd":"./build_linux.sh","arch":"x64"},
+            {"name":"linux","os":"ubuntu-latest","cmd":"./build_linux.sh","arch":"arm64"},
+            {"name":"android","os":"ubuntu-latest","cmd":"./build_android.sh","arch":"arm64"},
+            {"name":"android","os":"ubuntu-latest","cmd":"./build_android.sh","arch":"arm"},
+            {"name":"android","os":"ubuntu-latest","cmd":"./build_android.sh","arch":"x64"},
+            {"name":"ios","out":"ios-device-arm64","os":"macos-latest","cmd":"./build_ios.sh","arch":"arm64"},
+            {"name":"ios","out":"ios-simulator-arm64","os":"macos-latest","cmd":"./build_ios.sh","arch":"arm64","buildargs":"--environment simulator"}]') }}
         profile:
           - release
-    #          - debug
 
     name: Build webrtc (${{ matrix.target.name }}-${{ matrix.target.arch }}-${{ matrix.profile }}) ${{ matrix.target.buildargs }}
     runs-on: ${{ matrix.target.os }}

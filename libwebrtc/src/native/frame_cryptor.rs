@@ -320,6 +320,10 @@ impl From<EncryptedPacket> for sys_fc::ffi::EncryptedPacket {
 }
 
 #[cfg(test)]
+#[path = "frame_cryptor_video_tests.rs"]
+mod video_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::{

@@ -54,6 +54,7 @@ call git apply "%COMMAND_DIR%/patches/add_licenses.patch" -v --ignore-space-chan
 call git apply "%COMMAND_DIR%/patches/add_deps.patch" -v --ignore-space-change --ignore-whitespace --whitespace=nowarn
 call git apply "%COMMAND_DIR%/patches/ssl_verify_callback_with_native_handle.patch" -v --ignore-space-change --ignore-whitespace --whitespace=nowarn
 call git apply "%COMMAND_DIR%/patches/external_audio_source.patch" -v --ignore-space-change --ignore-whitespace --whitespace=nowarn
+call git apply "%COMMAND_DIR%/patches/gated_video_frame_transformer.patch" -v --ignore-space-change --ignore-whitespace --whitespace=nowarn || exit /b 1
 
 copy ".vpython3" "..\"
 

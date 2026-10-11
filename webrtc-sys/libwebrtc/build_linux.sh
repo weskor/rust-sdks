@@ -78,6 +78,7 @@ git apply "$COMMAND_DIR/patches/add_deps.patch" -v --ignore-space-change --ignor
 git apply "$COMMAND_DIR/patches/fix_desktop_capture_compile.patch" -v --ignore-space-change --ignore-whitespace --whitespace=nowarn
 git apply "$COMMAND_DIR/patches/external_audio_source.patch" -v --ignore-space-change --ignore-whitespace --whitespace=nowarn
 git apply "$COMMAND_DIR/patches/fix_pipewire_utils_compile.patch" -v --ignore-space-change --ignore-whitespace --whitespace=nowarn
+git apply "$COMMAND_DIR/patches/gated_video_frame_transformer.patch" -v --ignore-space-change --ignore-whitespace --whitespace=nowarn
 
 # Disable CREL (compact relocations). Chromium's build enables experimental
 # CREL via -Wa,--crel which causes segfaults on aarch64-linux (and is known
