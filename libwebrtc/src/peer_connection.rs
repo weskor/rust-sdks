@@ -71,8 +71,12 @@ pub enum SignalingState {
 #[derive(Debug, Clone, Default)]
 pub struct OfferOptions {
     pub ice_restart: bool,
-    pub offer_to_receive_audio: bool,
-    pub offer_to_receive_video: bool,
+    /// Legacy `offerToReceiveAudio`. `None` leaves transceiver directions
+    /// unchanged; `Some(false)` removes receive from every audio transceiver.
+    pub offer_to_receive_audio: Option<bool>,
+    /// Legacy `offerToReceiveVideo`. `None` leaves transceiver directions
+    /// unchanged; `Some(false)` removes receive from every video transceiver.
+    pub offer_to_receive_video: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default)]

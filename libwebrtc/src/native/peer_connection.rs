@@ -49,12 +49,17 @@ use crate::{
     MediaType, RtcError, RtcErrorType,
 };
 
+/// libwebrtc treats `-1` as "unset" for the legacy offer-to-receive options.
+fn legacy_offer_to_receive(value: Option<bool>) -> i32 {
+    value.map_or(-1, i32::from)
+}
+
 impl From<OfferOptions> for sys_pc::ffi::RtcOfferAnswerOptions {
     fn from(options: OfferOptions) -> Self {
         Self {
             ice_restart: options.ice_restart,
-            offer_to_receive_audio: options.offer_to_receive_audio as i32,
-            offer_to_receive_video: options.offer_to_receive_video as i32,
+            offer_to_receive_audio: legacy_offer_to_receive(options.offer_to_receive_audio),
+            offer_to_receive_video: legacy_offer_to_receive(options.offer_to_receive_video),
             ..Default::default()
         }
     }
